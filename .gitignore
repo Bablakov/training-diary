@@ -1,0 +1,15 @@
+node_modules
+dist
+dev-dist
+*.tsbuildinfo
+.DS_Store
+.idea
+.vscode
+.claude
+android/app/src/main/assets/www/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.keystore
+prototype/src/__pycache__/

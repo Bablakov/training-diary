@@ -1,0 +1,9 @@
+import "@fontsource-variable/golos-text";
+import "@fontsource-variable/caveat";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/oswald";
+import "@fontsource-variable/manrope";
+import "@fontsource-variable/unbounded";
+import "@fontsource-variable/onest";
+import "./styles.css";
+import "./app.js";
