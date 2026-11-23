@@ -438,7 +438,7 @@ function vHistory(){
  let last='';
  const rows=list.map(s=>{const d=new Date(s.start),g=MONN[d.getMonth()]+' '+d.getFullYear();const head=g!==last?`<p class="hgroup">${g}</p>`:'';last=g;
   return head+`<button class="hrow" data-act="hist" data-id="${s.id}"><span class="hday"><b>${d.getDate()}</b><small>${WDs[d.getDay()]}</small></span>
-  <span><h3>${esc(s.title)}</h3><p>Н ${hm(s.start)} · К ${hm(s.end)}${s.bodyWeight?' · В '+fmt(s.bodyWeight):''} · тоннаж ${fmt(tonnage(s))} кг${s.next?.rate?' · назавтра '+s.next.rate+'/5':''}</p></span><span class="hdur">${dur(s.start,s.end)}</span></button>`}).join('');
+  <span><h3>${esc(s.title)}</h3><p>Н ${hm(s.start)} · К ${s.timeUnknown?'—':hm(s.end)}${s.bodyWeight?' · В '+fmt(s.bodyWeight):''} · тоннаж ${fmt(tonnage(s))} кг${s.next?.rate?' · назавтра '+s.next.rate+'/5':''}</p></span><span class="hdur">${s.timeUnknown?'':dur(s.start,s.end)}</span></button>`}).join('');
  return `<div class="wrap">${hseg('history')}<h1>История</h1><p class="lead">${list.length?`${list.length} тренировок. Нажми на любую, чтобы открыть как страницу тетради.`:'Пока пусто: закончи первую тренировку.'}</p>${rows}</div>`;
 }
 function nextDay(s){
@@ -450,6 +450,7 @@ function nextDay(s){
 const tonnage=s=>Math.round(s.items.reduce((a,i)=>a+i.sets.filter(x=>x.done).reduce((b,x)=>b+(num(x.w)||0)*(num(x.r)||0)*(i.kind==='combo'?i.names.length:1)+(x.drops||[]).reduce((c,d)=>c+(num(d.w)||0)*(num(d.r)||0),0),0),0));
 const SETSEC=40;/* подход ≈ 40 с: приложение отмечает только конец подхода */
 function timing(s){
+ if(s.timeUnknown)return {unknown:true,total:0,warm:0,work:0,rest:0,other:0,gaps:[],sets:s.items.reduce((a,i)=>a+i.sets.filter(x=>x.done).length,0)};
  const w=s.warm&&!s.warm.skipped&&s.warm.start&&s.warm.end?mins(s.warm.start,s.warm.end):0;
  const ticks=s.items.flatMap(i=>i.sets.filter(x=>x.done&&x.t).map(x=>x.t)).sort((a,b)=>a-b);
  const total=mins(s.start,s.end),work=Math.round(ticks.length*SETSEC/60);
@@ -462,20 +463,20 @@ const mmss=s=>`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
 const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
 function vMore(){
  const list=done().sort((a,b)=>a.start-b.start);if(!list.length)return '';
- const T=list.map(timing),G=T.flatMap(t=>t.gaps),ton=list.map(tonnage);
+ const T=list.map(timing),TT=T.filter(t=>!t.unknown),G=T.flatMap(t=>t.gaps),ton=list.map(tonnage),ms=a=>a.length?mmss(avg(a)):'—';
  const fb=list.map(s=>s.feel?.before).filter(Boolean),fa=list.map(s=>s.feel?.after).filter(Boolean),fn=list.map(s=>s.next?.rate).filter(Boolean);
  const k=(l,v,sub)=>`<div class="kpi"><small>${l}</small><b>${v}</b>${sub?`<span>${sub}</span>`:''}</div>`;
  charts.push({pts:list.map((s,i)=>({d:s.start,v:ton[i],t:fmt(ton[i])+' кг'}))});const ci=charts.length-1;
  charts.push({pts:list.map((s,i)=>({d:s.start,v:Math.round(avg(T[i].gaps.map(g=>g.sec))/6)/10,t:mmss(avg(T[i].gaps.map(g=>g.sec)))})).filter(p=>p.v)});const cr=charts.length-1;
- const mx=Math.max(...T.map(t=>t.total)),seg=[['warm','Разминка','var(--muted)'],['work','Подходы','var(--chart)'],['rest','Отдых','color-mix(in srgb,var(--chart) 40%,var(--card))'],['other','Прочее','var(--line)']];
+ const mx=Math.max(1,...T.map(t=>t.total)),seg=[['warm','Разминка','var(--muted)'],['work','Подходы','var(--chart)'],['rest','Отдых','color-mix(in srgb,var(--chart) 40%,var(--card))'],['other','Прочее','var(--line)']];
  return `<div class="secth"><h2>Средние значения</h2><span>по всем тренировкам</span></div>
  <div class="kpis">${k('Тоннаж за тренировку',fmt(Math.round(avg(ton)))+' кг',`максимум ${fmt(Math.max(...ton))} кг`)}
  ${k('Подходов за тренировку',fmt(avg(T.map(t=>t.sets)).toFixed(1)),`упражнений ≈ ${fmt(avg(list.map(s=>s.items.length)).toFixed(1))}`)}
- ${k('Чистое время',dur(0,avg(T.map(t=>t.total-t.warm))*6e4),'без разминки')}
- ${k('Разминка',Math.round(avg(T.map(t=>t.warm).filter(Boolean)))+' мин','')}
- ${k('Отдых между подходами',mmss(avg(G.map(g=>g.sec))),'в среднем')}
- ${k('Отдых в начале',mmss(avg(G.filter(g=>g.early).map(g=>g.sec))),'первая половина тренировки')}
- ${k('Отдых в конце',mmss(avg(G.filter(g=>!g.early).map(g=>g.sec))),'вторая половина')}
+ ${k('Чистое время',dur(0,avg(TT.map(t=>t.total-t.warm))*6e4),'без разминки')}
+ ${k('Разминка',(TT.some(t=>t.warm)?Math.round(avg(TT.map(t=>t.warm).filter(Boolean)))+' мин':'—'),'')}
+ ${k('Отдых между подходами',ms(G.map(g=>g.sec)),'в среднем')}
+ ${k('Отдых в начале',ms(G.filter(g=>g.early).map(g=>g.sec)),'первая половина тренировки')}
+ ${k('Отдых в конце',ms(G.filter(g=>!g.early).map(g=>g.sec)),'вторая половина')}
  ${k('Самочувствие',fb.length?`${fmt(avg(fb).toFixed(1))} → ${fa.length?fmt(avg(fa).toFixed(1)):'—'}`:'—','до → после, из 5')}
  ${k('На следующий день',fn.length?fmt(avg(fn).toFixed(1))+' / 5':'—','')}</div>
  <div class="charts">
@@ -483,16 +484,16 @@ function vMore(){
  <div class="chcard"><h3>Средний отдых между подходами</h3><p>Минуты, по тренировкам</p><div class="fig" data-ch="${cr}"><svg role="img" aria-label="Отдых"></svg><div class="tip"></div></div></div>
  <div class="chcard" style="grid-column:1/-1"><h3>Из чего состоит тренировка</h3><p>Минуты по каждому дню. Подход считаем ≈ ${SETSEC} с, остальное между подходами — отдых.</p>
  <div class="chips" style="margin:6px 0 10px">${seg.map(([,l,c])=>`<span class="hint" style="display:inline-flex;align-items:center;gap:6px"><i style="width:12px;height:12px;border-radius:3px;background:${c};display:inline-block"></i>${l}</span>`).join('')}</div>
- ${list.map((s,i)=>{const t=T[i];return `<div class="gbar" title="${seg.map(([f,l])=>l+': '+t[f]+' мин').join(', ')}"><span>${dShort(s.start)} · ${esc(s.title.split(' + ')[0])}</span><span class="bar" style="display:flex;gap:2px;background:none;width:${(t.total/mx*100).toFixed(1)}%">${seg.map(([f,,c])=>t[f]?`<i style="flex:${t[f]} 0 0;background:${c};border-radius:3px"></i>`:'').join('')}</span><span>${t.total} мин · отдых ${t.rest}</span></div>`}).join('')}
- <p class="hint">В примере время подходов достроено равномерно: в тетради записано только начало упражнений.</p></div></div>`;
+ ${list.map((s,i)=>{const t=T[i];if(t.unknown)return '';return `<div class="gbar" title="${seg.map(([f,l])=>l+': '+t[f]+' мин').join(', ')}"><span>${dShort(s.start)} · ${esc(s.title.split(' + ')[0])}</span><span class="bar" style="display:flex;gap:2px;background:none;width:${(t.total/mx*100).toFixed(1)}%">${seg.map(([f,,c])=>t[f]?`<i style="flex:${t[f]} 0 0;background:${c};border-radius:3px"></i>`:'').join('')}</span><span>${t.total} мин · отдых ${t.rest}</span></div>`}).join('')}
+ <p class="hint">Отдых считается по отметкам подходов: у записей из тетради их нет.</p></div></div>`;
 }
 function vDetail(s){
  const d=new Date(s.start),w=s.warm;
  return `<div class="wrap"><button class="back" data-act="back">← История</button><article class="page">
  <h2 class="hand">${esc(s.title)} (${d.toLocaleDateString('ru-RU')})</h2>
- <p class="hmeta">${WD[d.getDay()]} · В — ${fmt(s.bodyWeight)||'—'} · Н — ${hm(s.start)} · К — ${hm(s.end)} · ${dur(s.start,s.end)}${gymBy(s.gymId)?' · '+esc(gymBy(s.gymId).name):''}</p>
+ <p class="hmeta">${WD[d.getDay()]} · В — ${fmt(s.bodyWeight)||'—'} · Н — ${hm(s.start)} · К — ${s.timeUnknown?'не записано':hm(s.end)+' · '+dur(s.start,s.end)}${gymBy(s.gymId)?' · '+esc(gymBy(s.gymId).name):''}</p>
  ${w&&w.n?`<p class="inote">Разминка: ${w.done} из ${w.n}${w.start?' ('+hm(w.start)+')':''}</p>`:''}${s.note?`<p class="inote">${esc(s.note)}</p>`:''}
- ${s.items.map(it=>`<div class="hl ${it.base?'base':''}"><div class="hn"><b>${esc(it.name)}</b><small>${it.start?hm(it.start)+'–'+hm(it.end):'не делал'}</small></div>
+ ${s.items.map(it=>`<div class="hl ${it.base?'base':''}"><div class="hn"><b>${esc(it.name)}</b><small>${it.start?(it.end?hm(it.start)+'–'+hm(it.end):'с '+hm(it.start)):it.sets.some(x=>x.done)?'время не записано':'не делал'}</small></div>
  ${it.kind==='combo'?`<p class="inote">Связка: ${it.names.map(esc).join(' → ')}</p>`:''}
  <div class="planline">${planLine(it.plan.sets)}<span class="dots">${it.sets.map(x=>`<i class="dot ${x.done?'on':''}"></i>`).join('')}</span></div>
  <div class="hs">${it.sets.filter(x=>x.done).map(setTxt).join('; ')}</div>
@@ -505,7 +506,7 @@ let charts=[];
 function vStats(){
  const list=done().sort((a,b)=>a.start-b.start);
  if(!list.length)return `<div class="wrap"><h1>Статистика</h1><p class="lead">Появится после первой тренировки.</p></div>`;
- const durs=list.map(s=>mins(s.start,s.end)),avg=Math.round(durs.reduce((a,b)=>a+b,0)/durs.length);
+ const timed=list.filter(s=>!s.timeUnknown),durs=(timed.length?timed:list).map(s=>mins(s.start,s.end)),avg=Math.round(durs.reduce((a,b)=>a+b,0)/durs.length);
  const weeks=Math.max(1,(list[list.length-1].start-list[0].start)/6048e5);
  const bw=list.filter(s=>num(s.bodyWeight)).map(s=>({d:s.start,v:num(s.bodyWeight)}));
  const bases=live(db.exercises).filter(e=>e.base);
@@ -513,17 +514,17 @@ function vStats(){
  const series=bases.map(e=>{const pts=[];list.forEach(s=>s.items.filter(i=>i.name===e.name).forEach(i=>{const b=i.sets.filter(x=>x.done&&num(x.w)).sort((a,c)=>num(c.w)-num(a.w))[0];if(b)pts.push({d:s.start,v:num(b.w),t:`${fw(b.w)} кг × ${b.r||'—'}`})}));return {e,pts}});
  const best=series.map(({e,pts})=>{const b=[...pts].sort((a,c)=>c.v-a.v)[0];return `<div class="kpi"><small>${esc(e.name)}: максимум</small><b>${b?fmt(b.v)+' кг':'—'}</b><span>${b?dShort(b.d)+', '+b.t.split('× ')[1]+' повт.':'ещё не делал'}</span></div>`}).join('');
  const ch=(title,sub,pts,unit)=>{charts.push({pts,unit});return `<div class="chcard"><h3>${title}</h3><p>${sub}</p><div class="fig" data-ch="${charts.length-1}"><svg role="img" aria-label="${esc(title)}"></svg><div class="tip"></div></div></div>`};
- const gyms={};list.forEach(s=>{const n=gymBy(s.gymId)?.name||'Без зала';(gyms[n]=gyms[n]||[]).push(mins(s.start,s.end))});
+ const gyms={};timed.forEach(s=>{const n=gymBy(s.gymId)?.name||'Без зала';(gyms[n]=gyms[n]||[]).push(mins(s.start,s.end))});
  const gmax=Math.max(...Object.values(gyms).map(a=>a.length));
  const bwd=bw.length>1?bw[bw.length-1].v-bw[0].v:0;
- return `<h1>Статистика</h1><p class="lead">По ${list.length} тренировкам, ${dShort(list[0].start)} — ${dShort(list[list.length-1].start)}. Пример: записи из тетради.</p>
+ return `<h1>Статистика</h1><p class="lead">По ${list.length} тренировкам, ${dShort(list[0].start)} — ${dShort(list[list.length-1].start)}.</p>
  <div class="kpis"><div class="kpi"><small>Тренировок</small><b>${list.length}</b><span>≈ ${fmt((list.length/weeks).toFixed(1))} в неделю</span></div>
  <div class="kpi"><small>Средняя длительность</small><b>${dur(0,avg*60000)}</b><span>от ${Math.min(...durs)} до ${Math.max(...durs)} мин</span></div>
  <div class="kpi"><small>Вес тела</small><b>${bw.length?fmt(bw[bw.length-1].v)+' кг':'—'}</b><span>${bw.length>1?(bwd>0?'+':'')+fmt(bwd.toFixed(1))+' кг с '+dShort(bw[0].d):''}</span></div>
  ${best}</div>
  <div class="charts">${series.map(({e,pts})=>ch(esc(e.name),'Самый тяжёлый подход за тренировку, кг',pts,'кг')).join('')}
  ${ch('Вес тела','По дням тренировок, кг',bw.map(p=>({...p,t:fmt(p.v)+' кг'})),'кг')}
- ${ch('Длительность','Минут на тренировку',list.map(s=>({d:s.start,v:mins(s.start,s.end),t:dur(s.start,s.end)})),'мин')}
+ ${ch('Длительность','Минут на тренировку',timed.map(s=>({d:s.start,v:mins(s.start,s.end),t:dur(s.start,s.end)})),'мин')}
  <div class="chcard"><h3>Залы</h3><p>Тренировок и средняя длительность</p>${Object.entries(gyms).map(([n,a])=>`<div class="gbar"><span>${esc(n)}</span><span class="bar"><i style="width:${(a.length/gmax*100).toFixed(0)}%"></i></span><span>${a.length} · ${Math.round(a.reduce((x,y)=>x+y,0)/a.length)} мин</span></div>`).join('')}</div></div>
  <details><summary>Таблица по тренировкам</summary><div class="scroll"><table><thead><tr><th>Дата</th><th>Тренировка</th><th>Зал</th><th class="r">Вес тела</th><th class="r">Минут</th>${bases.map(e=>`<th class="r">${esc(e.name)}</th>`).join('')}</tr></thead><tbody>
  ${list.map(s=>`<tr><td>${dShort(s.start)}</td><td>${esc(s.title)}</td><td>${esc(gymBy(s.gymId)?.name||'')}</td><td class="r">${fmt(s.bodyWeight)}</td><td class="r">${mins(s.start,s.end)}</td>${series.map(({pts})=>`<td class="r">${pts.find(p=>p.d===s.start)?.t||''}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>`;
