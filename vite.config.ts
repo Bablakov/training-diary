@@ -2,15 +2,22 @@ import { defineConfig } from "vitest/config";
 import { VitePWA } from "vite-plugin-pwa";
 import pkg from "./package.json" with { type: "json" };
 
-// Сайт живёт на GitHub Pages в подпапке репозитория. Сборка для Android (`--mode android`) кладёт
-// файлы прямо в assets приложения: пути относительные, сервис-воркер не нужен — всё и так внутри APK.
+// Сайт живёт на GitHub Pages в подпапке репозитория. Сборки для Android (`--mode android`) и Windows
+// (`--mode desktop`) кладут файлы прямо внутрь приложения: пути относительные, сервис-воркер не нужен.
+const OUT: Record<string, string> = { android: "android/app/src/main/assets/www", desktop: "desktop/www" };
+
 export default defineConfig(({ mode }) => {
   const android = mode === "android";
-  const base = android ? "./" : "/training-diary/";
+  const packaged = mode in OUT;
+  const base = packaged ? "./" : "/training-diary/";
   return {
     base,
-    define: { __APP_VERSION__: JSON.stringify(pkg.version), __ANDROID__: JSON.stringify(android) },
-    plugins: android
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      __ANDROID__: JSON.stringify(android),
+      __PLATFORM__: JSON.stringify(packaged ? mode : "web"),
+    },
+    plugins: packaged
       ? []
       : [
           VitePWA({
@@ -47,7 +54,7 @@ export default defineConfig(({ mode }) => {
             },
           }),
         ],
-    build: { target: "es2022", sourcemap: false, outDir: android ? "android/app/src/main/assets/www" : "dist", emptyOutDir: true },
+    build: { target: "es2022", sourcemap: false, outDir: OUT[mode] ?? "dist", emptyOutDir: true },
     test: { include: ["src/**/*.test.ts"] },
   };
 });

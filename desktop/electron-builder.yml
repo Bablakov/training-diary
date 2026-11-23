@@ -1,0 +1,31 @@
+appId: com.bablakov.trainingdiary
+productName: Дневник тренировок
+copyright: Kirill
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - main.cjs
+  - www/**/*
+  - package.json
+  - "!**/*.map"
+
+# Установщик с выбором папки; права администратора не нужны. Данные (localStorage, токен
+# синхронизации) лежат в %APPDATA%\Дневник тренировок и переживают обновления и удаление.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Дневник тренировок
+  deleteAppDataOnUninstall: false
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: training-diary-${version}-setup.${ext}

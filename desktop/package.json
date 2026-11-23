@@ -1,0 +1,17 @@
+{
+  "name": "training-diary-desktop",
+  "productName": "Дневник тренировок",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Дневник тренировок для Windows: то же приложение, что на телефоне, работает без сети",
+  "author": "Kirill",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "^26.15.3"
+  }
+}

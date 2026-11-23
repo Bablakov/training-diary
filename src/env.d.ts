@@ -3,3 +3,4 @@
 
 declare const __APP_VERSION__: string;
 declare const __ANDROID__: boolean;
+declare const __PLATFORM__: "web" | "android" | "desktop";

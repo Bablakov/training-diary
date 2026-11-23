@@ -745,6 +745,7 @@ function act(b){
  case'gymAdd':{const inp=document.getElementById('newGym');if(!inp.value.trim()){inp.focus();return}ensureGym(inp.value);break}
  case'gymDel':return confirm2('g'+b.dataset.id,()=>{const x=db.gyms.find(q=>q.id===b.dataset.id);x.deleted=true;mark(x);save()});
  case'sync':runSync(true);return;
+ case'updCheck':checkUpdate(true);return;
  case'syncCheck':{const ref=repoRef(syncCfg());if(!ref){toast('Укажи репозиторий и токен');return}showSync('Проверяю доступ…');checkAccess(ref).then(r=>{showSync(r.message);toast(r.message)});return}
  case'expCopy':if(window.AndroidBridge){window.AndroidBridge.copyText(exportJSON());toast('Скопировано: вставь в Telegram или заметку');return}
   navigator.clipboard?.writeText(exportJSON()).then(()=>toast('Скопировано: вставь в Telegram или заметку'),()=>{document.getElementById('impText').value=exportJSON();toast('Буфер недоступен: текст положен в поле ниже')});return;
@@ -768,7 +769,7 @@ function setCfg(c){try{localStorage.setItem(CFGKEY,JSON.stringify(c))}catch(e){}
 function syncState(){try{return JSON.parse(localStorage.getItem(STATEKEY)||'{}')}catch(e){return {}}}
 function setState(x){try{localStorage.setItem(STATEKEY,JSON.stringify(x))}catch(e){}}
 function repoRef(c){const [owner,repo]=String(c.repo||'').trim().split('/');return owner&&repo&&c.token?{owner,repo,branch:'main',token:String(c.token).trim()}:null}
-let syncing=false,syncTimer=null,pendingRender=false;
+var syncing=false,syncTimer=null,pendingRender=false;
 function pendingCount(){const last=syncState().last||0;return ['exercises','gyms','programs','plans','sessions'].reduce((n,k)=>n+db[k].filter(r=>(r.upd||0)>last).length,0)}
 function syncLine(){const st=syncState(),n=pendingCount();if(syncing)return 'Синхронизирую…';if(!repoRef(syncCfg()))return 'Синхронизация не настроена: данные только на этом устройстве';
  return `${st.last?`Последняя синхронизация ${dShort(st.last)} в ${hm(st.last)}: ${st.msg}`:st.msg||'Ещё не синхронизировалось'}${n?` · не отправлено: ${n}`:''}`}
@@ -792,14 +793,14 @@ async function runSync(manual){
  finally{syncing=false;showSync(syncLine())}
 }
 function vSync(){const c=syncCfg();
- return `<section class="sec sync"><h2>Синхронизация через GitHub</h2>
+ return `${update?`<div class="sugg" style="margin-top:28px">Доступна новая версия <b>${esc(update.v)}</b> (у тебя ${__APP_VERSION__}).<a class="btn sm pri" href="${esc(update.url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;text-decoration:none">Скачать</a><a href="${esc(update.notes)}" target="_blank" rel="noopener">Что нового</a></div>`:''}<section class="sec sync"><h2>Синхронизация через GitHub</h2>
  <p>Всё хранится на этом устройстве и работает без интернета. Синхронизация сводит данные с другими устройствами через твой приватный репозиторий: каждая запись лежит отдельным файлом, а если одну и ту же правили в двух местах, остаётся более свежая правка.</p>
  <div class="frow"><label class="fl">Репозиторий<input data-c="cfg" data-f="repo" value="${esc(c.repo)}" placeholder="владелец/репозиторий" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
  <label class="fl">Токен<input type="password" data-c="cfg" data-f="token" value="${esc(c.token)}" placeholder="github_pat_…" autocomplete="off" autocapitalize="off" spellcheck="false"></label></div>
  <p class="hint">Fine-grained токен с доступом только к этому репозиторию и правом Contents: Read and write. Хранится только на этом устройстве и в экспорт не попадает.</p>
  <label class="toggle" style="margin-top:10px;white-space:normal"><input type="checkbox" data-c="cfg" data-f="auto" ${c.auto?'checked':''}>Синхронизировать автоматически: при открытии, после тренировки и через полминуты после правок</label>
  <div class="row"><button class="btn pri" data-act="sync">Синхронизировать сейчас</button><button class="btn" data-act="syncCheck">Проверить доступ</button></div>
- <p class="hint" id="syncMsg" style="margin-top:10px">${esc(syncLine())}</p><p class="hint">Версия ${__APP_VERSION__}${__ANDROID__?' · Android':''}</p></section>`}
+ <p class="hint" id="syncMsg" style="margin-top:10px">${esc(syncLine())}</p><p class="hint">Версия ${__APP_VERSION__} · ${{web:'сайт',android:'Android',desktop:'Windows'}[__PLATFORM__]}</p>${__PLATFORM__==='web'?'':`<div class="row"><button class="btn sm" data-act="updCheck">Проверить обновления</button></div>`}</section>`}
 main.addEventListener('focusout',()=>setTimeout(()=>{const f=document.activeElement;if(pendingRender&&!(f&&main.contains(f)&&f.matches('input,textarea'))){pendingRender=false;render()}},150));
 requestPersist();
 showSync(syncLine());
@@ -809,3 +810,21 @@ else setTimeout(autoSync,1500);
 addEventListener('online',autoSync);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Date.now()-(syncState().last||0)>120000)autoSync()});
 
+/* ---------- обновления: Windows и Android сообщают о новой версии сами (сайт обновляется без этого) ---------- */
+const RELEASES='Bablakov/training-diary-app';
+var update=null;
+function verNewer(a,b){const x=String(a).replace(/^v/,'').split('.').map(n=>+n||0),y=String(b).split('.').map(n=>+n||0);for(let i=0;i<3;i++){if((x[i]||0)!==(y[i]||0))return (x[i]||0)>(y[i]||0)}return false}
+async function checkUpdate(manual){
+ if(__PLATFORM__==='web')return;
+ if(!navigator.onLine){if(manual)toast('Нет сети');return}
+ try{
+  const r=await fetch(`https://api.github.com/repos/${RELEASES}/releases/latest`,{headers:{Accept:'application/vnd.github+json'}});
+  if(!r.ok)throw new Error('GitHub ответил '+r.status);
+  const j=await r.json(),ext=__PLATFORM__==='android'?'.apk':'.exe',a=(j.assets||[]).find(x=>x.name.endsWith(ext));
+  if(!verNewer(j.tag_name,__APP_VERSION__)){update=null;if(manual)toast(`У тебя последняя версия ${__APP_VERSION__}`);return}
+  update={v:String(j.tag_name).replace(/^v/,''),url:a?.browser_download_url||j.html_url,notes:j.html_url};
+  toast(`Доступна версия ${update.v}: Справочник → Скачать`);
+  if(route()==='library'&&!main.contains(document.activeElement))render();
+ }catch(e){if(manual)toast('Не удалось проверить обновления')}
+}
+setTimeout(()=>checkUpdate(false),4000);

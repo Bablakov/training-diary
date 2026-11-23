@@ -3,7 +3,7 @@
 Программы тренировок, план наперёд, запись в зале и статистика. Одно приложение для всех устройств:
 
 - **iPhone и компьютер**: сайт https://bablakov.github.io/training-diary/. На iPhone открой его в Safari → «Поделиться» → «На экран „Домой“».
-- **Android**: APK со страницы [Releases](https://github.com/Bablakov/training-diary/releases/latest).
+- **Android и Windows**: установщики в [Bablakov/training-diary-app](https://github.com/Bablakov/training-diary-app) (там же ссылки для всех устройств).
 
 Всё работает без интернета: данные хранятся на самом устройстве. Синхронизация через GitHub нужна только для того, чтобы план, составленный на компьютере, оказался на телефоне, а тренировки с телефона — на компьютере.
 
@@ -37,10 +37,11 @@ npm run dev          # http://localhost:5173/training-diary/
 npm test             # тесты синхронизации
 npm run build        # сайт (dist/), выкладывается GitHub Actions при push в main
 npm run apk          # Android: android/app/build/outputs/apk/release/app-release.apk
+npm run exe          # Windows: desktop/release/training-diary-X.Y.Z-setup.exe (сначала `npm install` в desktop/)
 ```
 
 Для APK нужны `JAVA_HOME=C:\Tools\jdk-17`, `GRADLE_USER_HOME=D:\Tools\gradle-home` и `android/local.properties` с `sdk.dir=D:/Tools/android-sdk`. Ключ подписи — `%APPDATA%\training-diary\android-keystore.properties` (вне репозитория).
 
-Новая версия: поднять `version` в `package.json` (у сайта и APK она общая), `npm run apk`, push, `gh release create vX.Y.Z android/app/build/outputs/apk/release/app-release.apk`.
+Новая версия: поднять `version` в `package.json` и `desktop/package.json` (версия общая для сайта, APK и exe), `npm run apk`, `npm run exe`, push, затем релиз в **training-diary-app** с файлами под постоянными именами `training-diary.apk` и `training-diary-setup.exe` (на них ведут ссылки «latest/download» и проверка обновлений в приложении), дописать CHANGELOG там.
 
 `prototype/` — кликабельный прототип, по которому согласовывался интерфейс.
