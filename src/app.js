@@ -249,11 +249,21 @@ function openDD(btn){
  else{html='<div class="popt">Добавить в план</div>'+live(db.programs).map(p=>opt(p.id,p.title,`${p.items.length} упр.${p.desc?' · '+p.desc:''}`)).join('')+opt('__empty','Пустая тренировка','Упражнения добавишь сам');pick=v=>{closePop();addPlan(v==='__empty'?'':v);save();render()}}
  openPop(btn,html,{pick,sheet:true});
 }
-function addPlan(pid,silent){
+function addPlan(pid,silent,from){
  syncSoon();
  const p=progBy(pid),ord=Math.max(0,...live(db.plans).map(q=>q.ord))+1;
- db.plans.push({id:uid(),ord,programId:p?.id||null,title:p?.title||'Своя тренировка',desc:p?.desc||'',warmup:p?.warmup??3,items:p?copyItems(p.items):[],upd:Date.now(),sessionId:null});
+ db.plans.push(from?{id:uid(),ord,...from,upd:Date.now(),sessionId:null}:{id:uid(),ord,programId:p?.id||null,title:p?.title||'Своя тренировка',desc:p?.desc||'',warmup:p?.warmup??3,items:p?copyItems(p.items):[],upd:Date.now(),sessionId:null});
  if(!silent)toast(`«${p?.title||'Своя тренировка'}» добавлена в план`);
+}
+/* Тренировка из истории → тренировка в плане: те же упражнения, вес и повторы каждого подхода, как сделал.
+   Если упражнение не делал (например, присед пропущен), берётся то, что было запланировано. */
+function repeatOf(src){
+ const items=src.items.map(i=>{const dn=i.sets.filter(x=>x.done),use=dn.length?dn:i.sets,pl=i.plan?.sets||[];
+  if(i.kind==='combo')return PI(i.name,{names:i.names,w:use[0]?.w||'',r:use[0]?.r||'',s:use.length||3,n:dn.length?i.note:''});
+  const each=(dn.length?dn.map(x=>[x.w,x.r]):pl.map(x=>[first(x.w)||x.w,x.r]));
+  const drops=(dn.find(x=>x.drops?.length)?.drops||[]).map(d=>d.w||'0').join(', ');
+  return PI(i.name,{mode:'each',each,drops,n:dn.length?i.note:''})});
+ return {programId:src.programId||null,title:src.title,desc:`Повтор тренировки ${dShort(src.start)}: вес и повторы как в прошлый раз`,warmup:src.warm?.n??3,items};
 }
 const target=()=>route()==='queue'&&ui.planEdit?db.plans.find(q=>q.id===ui.planEdit):(live(db.programs).find(x=>x.id===ui.prog)||live(db.programs)[0]);
 const stepper=(f,v,k)=>`<span class="stepper"><button data-act="step" data-f="${f}" ${k!=null?`data-k="${k}"`:''} data-d="-1" aria-label="Меньше">−</button><span>${v}</span><button data-act="step" data-f="${f}" ${k!=null?`data-k="${k}"`:''} data-d="1" aria-label="Больше">+</button></span>`;
@@ -499,7 +509,7 @@ function vDetail(s){
  <div class="planline">${planLine(it.plan.sets)}<span class="dots">${it.sets.map(x=>`<i class="dot ${x.done?'on':''}"></i>`).join('')}</span></div>
  <div class="hs">${it.sets.filter(x=>x.done).map(setTxt).join('; ')}</div>
  ${it.note?`<p class="inote">${esc(it.note)}</p>`:''}</div>`).join('')}
- </article><div class="row"><button class="btn" data-act="toProg" data-id="${s.id}">Сделать программу из этой тренировки</button><button class="btn danger" data-act="delS" data-id="${s.id}">${cf('ds'+s.id,'Удалить','Точно удалить?')}</button></div></div>`;
+ </article><div class="row"><button class="btn pri" data-act="repeat" data-id="${s.id}">Повторить в плане</button><button class="btn" data-act="toProg" data-id="${s.id}">Сделать программу из этой тренировки</button><button class="btn danger" data-act="delS" data-id="${s.id}">${cf('ds'+s.id,'Удалить','Точно удалить?')}</button></div></div>`;
 }
 
 /* ---------- Статистика ---------- */
@@ -657,7 +667,7 @@ function startSession(src,planId){
  if(planId){const q=db.plans.find(x=>x.id===planId);q.sessionId=ns.id;mark(q);ns.programId=q.programId}
  db.sessions.push(ns);db.activeId=ns.id;ui.finishing=false;save();toast(`Старт ${hm(now)}, ${WD[new Date(now).getDay()].toLowerCase()}`);go('workout');
 }
-const QUICK=new Set(["start", "finishOk", "qUp", "qDown", "qDel", "qReset", "serAdd", "toPlan", "newProg", "delProg", "piAdd", "piAddCombo", "piDel", "piUp", "piDown", "piSet", "allSugg", "piSugg", "delS", "toProg", "impMerge", "impReplace", "libAdd", "libDel", "gymAdd", "gymDel", "step"]);
+const QUICK=new Set(["repeat","start", "finishOk", "qUp", "qDown", "qDel", "qReset", "serAdd", "toPlan", "newProg", "delProg", "piAdd", "piAddCombo", "piDel", "piUp", "piDown", "piSet", "allSugg", "piSugg", "delS", "toProg", "impMerge", "impReplace", "libAdd", "libDel", "gymAdd", "gymDel", "step"]);
 function act(b){
  if(QUICK.has(b.dataset.act))syncSoon();
  const a=b.dataset.act,s=active(),k=+b.dataset.k,t=target();
@@ -739,6 +749,7 @@ function act(b){
  case'hist':ui.hist=b.dataset.id;render();scrollTo(0,0);return;
  case'back':ui.hist=null;render();return;
  case'delS':return confirm2('ds'+b.dataset.id,()=>{const x=db.sessions.find(q=>q.id===b.dataset.id);x.deleted=true;mark(x);ui.hist=null;save()});
+ case'repeat':{const src=db.sessions.find(x=>x.id===b.dataset.id);addPlan(null,true,repeatOf(src));toast('Добавлено в план: поправь вес и подходы');const id=db.plans[db.plans.length-1].id;save();location.hash='queue';setTimeout(()=>{ui.planEdit=id;render();scrollTo(0,0)},0);return}
  case'toProg':{const src=db.sessions.find(x=>x.id===b.dataset.id);
   const np={id:uid(),title:src.title+' (копия)',desc:'',warmup:src.warm?.n??3,upd:now,items:src.items.map(i=>{const dn=i.sets.filter(x=>x.done);
    if(i.kind==='combo')return PI(i.name,{names:i.names,w:dn[0]?.w||'',r:dn[0]?.r||'',s:dn.length||3});

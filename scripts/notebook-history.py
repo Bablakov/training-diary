@@ -43,7 +43,7 @@ def session(date, title, pid, bw, start, end, warm, note, items, time_unknown=Fa
             "start": st, "end": st if time_unknown else ts(date, end), "timeUnknown": time_unknown,
             "bodyWeight": bw, "note": note, "upd": NOW, "feel": {"before": 0, "after": 0},
             "warm": {"n": 3, "done": 3, "start": ts(date, warm), "end": None, "skipped": False},
-            "items": [item(date, k, *it[:5], **(it[5] if len(it) > 5 else {})) for k, it in enumerate(items)]}
+            "items": [item(date, k, *it[:4], **(it[4] if len(it) > 4 else {})) for k, it in enumerate(items)]}
 
 
 NOT_DONE = lambda w, r: S(w, r, done=False)
