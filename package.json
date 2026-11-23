@@ -1,6 +1,6 @@
 {
   "name": "training-diary",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "description": "Дневник тренировок: программы, план наперёд, запись в зале, статистика. PWA для iPhone и приложение для Android, работает без сети, синхронизация через GitHub",

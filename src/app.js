@@ -250,6 +250,7 @@ function openDD(btn){
  openPop(btn,html,{pick,sheet:true});
 }
 function addPlan(pid,silent){
+ syncSoon();
  const p=progBy(pid),ord=Math.max(0,...live(db.plans).map(q=>q.ord))+1;
  db.plans.push({id:uid(),ord,programId:p?.id||null,title:p?.title||'Своя тренировка',desc:p?.desc||'',warmup:p?.warmup??3,items:p?copyItems(p.items):[],upd:Date.now(),sessionId:null});
  if(!silent)toast(`«${p?.title||'Своя тренировка'}» добавлена в план`);
@@ -642,6 +643,7 @@ main.addEventListener('change',e=>{
  else if(c==='ex'){const ex=db.exercises.find(x=>x.id===el.dataset.id);ex[f]=f==='max'?v.replace(',','.'):v;mark(ex);re=f!=='max'}
  else if(c==='cfg'){const cfg=syncCfg();cfg[f]=el.type==='checkbox'?el.checked:el.value.trim();setCfg(cfg);showSync(syncLine());return}
  else if(c==='gym'){const g=db.gyms.find(x=>x.id===el.dataset.id);if(v){g.name=v;mark(g)}}
+ if(['t','pi','pt','pn','max','ex','gym','next'].includes(c))syncSoon(4000);
  save();if(re)render();
 });
 main.addEventListener('click',e=>{const d=e.target.closest('[data-dd]');if(d){openDD(d);return}const b=e.target.closest('[data-act]');if(b)act(b)});
@@ -655,7 +657,9 @@ function startSession(src,planId){
  if(planId){const q=db.plans.find(x=>x.id===planId);q.sessionId=ns.id;mark(q);ns.programId=q.programId}
  db.sessions.push(ns);db.activeId=ns.id;ui.finishing=false;save();toast(`Старт ${hm(now)}, ${WD[new Date(now).getDay()].toLowerCase()}`);go('workout');
 }
+const QUICK=new Set(["start", "finishOk", "qUp", "qDown", "qDel", "qReset", "serAdd", "toPlan", "newProg", "delProg", "piAdd", "piAddCombo", "piDel", "piUp", "piDown", "piSet", "allSugg", "piSugg", "delS", "toProg", "impMerge", "impReplace", "libAdd", "libDel", "gymAdd", "gymDel", "step"]);
 function act(b){
+ if(QUICK.has(b.dataset.act))syncSoon();
  const a=b.dataset.act,s=active(),k=+b.dataset.k,t=target();
  const it=s&&b.dataset.i?s.items.find(i=>i.id===b.dataset.i):null;
  const now=Date.now();
@@ -666,7 +670,7 @@ function act(b){
   return startSession(progBy(b.dataset.prog))}
  case'finish':ui.finishing=true;render();main.querySelector('[data-act=finishOk]')?.scrollIntoView({block:'center',behavior:'smooth'});return;
  case'finishNo':ui.finishing=false;break;
- case'finishOk':{setTimeout(()=>runSync(false),800);s.end=now;s.items.forEach(i=>{if(i.start&&!i.end)i.end=now});if(s.warm.start&&!s.warm.end)s.warm.end=now;mark(s);db.activeId=null;ui.finishing=false;ui.hist=s.id;save();toast(`Тренировка записана: ${dur(s.start,s.end)}`);go('history');return}
+ case'finishOk':{s.end=now;s.items.forEach(i=>{if(i.start&&!i.end)i.end=now});if(s.warm.start&&!s.warm.end)s.warm.end=now;mark(s);db.activeId=null;ui.finishing=false;ui.hist=s.id;save();toast(`Тренировка записана: ${dur(s.start,s.end)}`);go('history');return}
  case'feel':{const v=+b.dataset.v,f=b.dataset.f;
   if(f==='next'){const x=b.closest('.panel').querySelector('[data-c=next]'),sx=db.sessions.find(q=>q.id===x.dataset.id);sx.next={...(sx.next||{}),rate:v,at:now};mark(sx);save();toast('Записал ощущения на следующий день');render();return}
   s.feel=s.feel||{};s.feel[f]=v;break}
@@ -775,23 +779,26 @@ function pendingCount(){const last=syncState().last||0;return ['exercises','gyms
 function syncLine(){const st=syncState(),n=pendingCount();if(syncing)return 'Синхронизирую…';if(!repoRef(syncCfg()))return 'Синхронизация не настроена: данные только на этом устройстве';
  return `${st.last?`Последняя синхронизация ${dShort(st.last)} в ${hm(st.last)}: ${st.msg}`:st.msg||'Ещё не синхронизировалось'}${n?` · не отправлено: ${n}`:''}`}
 function showSync(msg){const a=document.getElementById('syncMsg');if(a)a.textContent=msg;const b=document.getElementById('syncNav');if(b)b.textContent=msg}
-function scheduleSync(){const c=syncCfg();if(!c.auto||!repoRef(c))return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>runSync(false),30000)}
+function scheduleSync(){const c=syncCfg();if(!c.auto||!repoRef(c))return;if(quickAt)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>runSync(false),30000)}
+/* Быстрая синхронизация после важного действия; несколько действий подряд сливаются в одну. */
+var quickAt=0,rerun=false;
+function syncSoon(ms=2000){const c=syncCfg();if(!c.auto||!repoRef(c))return;if(syncing){rerun=true;return}clearTimeout(syncTimer);quickAt=Date.now()+ms;syncTimer=setTimeout(()=>{quickAt=0;runSync(false)},ms)}
 async function runSync(manual){
  const c=syncCfg(),ref=repoRef(c);
  if(!ref){if(manual)toast('Укажи репозиторий и токен в Справочнике');return}
  if(syncing)return;
  if(!navigator.onLine){if(manual)toast('Нет сети: синхронизирую, когда появится');return}
- syncing=true;clearTimeout(syncTimer);const started=Date.now();showSync('Синхронизирую…');
+ quickAt=0;syncing=true;clearTimeout(syncTimer);const started=Date.now();showSync('Синхронизирую…');
  try{
   const r=await syncData(ref,db,m=>showSync(m));persist(db);
   const msg=r.pulled||r.pushed?`получено ${r.pulled}, отправлено ${r.pushed}`:'всё совпадает';
-  setState({last:started,msg,ok:true});if(manual)toast(`Синхронизировано: ${msg}`);
+  setState({last:started,msg,ok:true});if(manual)toast(`Синхронизировано: ${msg}`);else if(r.pulled)toast(`Пришло с другого устройства: ${r.pulled}`);
   if(r.pulled){
    if(!live(db.programs).some(p=>p.id===ui.prog))ui.prog=live(db.programs)[0]?.id;
    const f=document.activeElement;if(f&&main.contains(f)&&f.matches('input,textarea'))pendingRender=true;else render();
   }
  }catch(e){setState({...syncState(),msg:'ошибка: '+(e?.message||e),ok:false});if(manual)toast(e?.message||'Не получилось синхронизировать')}
- finally{syncing=false;showSync(syncLine())}
+ finally{syncing=false;showSync(syncLine());if(rerun){rerun=false;syncSoon(1000)}}
 }
 function vSync(){const c=syncCfg();
  return `${update?`<div class="sugg" style="margin-top:28px">Доступна новая версия <b>${esc(update.v)}</b> (у тебя ${__APP_VERSION__}).<a class="btn sm pri" href="${esc(update.url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;text-decoration:none">Скачать</a><a href="${esc(update.notes)}" target="_blank" rel="noopener">Что нового</a></div>`:''}<section class="sec sync"><h2>Синхронизация через GitHub</h2>
@@ -809,7 +816,12 @@ const autoSync=()=>{if(syncCfg().auto)runSync(false)};
 if(!stored)loadBackup().then(b=>{if(b){db=b;ui.prog=live(db.programs)[0]?.id;ui.series.progs=live(db.programs).map(p=>p.id);render();toast('Данные восстановлены из резервной копии')}}).finally(()=>setTimeout(autoSync,800));
 else setTimeout(autoSync,1500);
 addEventListener('online',autoSync);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&Date.now()-(syncState().last||0)>120000)autoSync()});
+/* Свернул приложение — отправляем несохранённое; вернулся — забираем чужое; открыто — сверяемся раз в 3 минуты. */
+document.addEventListener('visibilitychange',()=>{
+ if(document.visibilityState==='hidden'){if(pendingCount())autoSync()}
+ else if(Date.now()-(syncState().last||0)>30000)autoSync();
+});
+setInterval(()=>{if(document.visibilityState==='visible')autoSync()},180000);
 
 /* ---------- обновления: Windows и Android сообщают о новой версии сами (сайт обновляется без этого) ---------- */
 const RELEASES='Bablakov/training-diary-app';

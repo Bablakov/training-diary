@@ -1,7 +1,7 @@
 {
   "name": "training-diary-desktop",
   "productName": "Дневник тренировок",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Дневник тренировок для Windows: то же приложение, что на телефоне, работает без сети",
   "author": "Kirill",
